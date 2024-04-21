@@ -49,13 +49,18 @@ struct schedulable_task_promise
   using promise_type =
       basic_promise<T, schedulable_task<T, E>, schedulable_task_promise<T, E>>;
   using handle_type = promise_type::handle_type;
+
   bool has_executor() const noexcept { return executor_ != nullptr; }
+
   executor_type *executor() const noexcept { return executor_; }
+
   void set_executor(executor_type *executor) noexcept { executor_ = executor; }
+
   template <Resumable R> void schedule(R &&task) noexcept {
     assert(executor_ != nullptr);
     executor_->schedule(std::pair{std::forward<R>(task), nullptr});
   }
+
   template <Resumable R, Resumable S>
   void schedule(R &&task, S &&to_resume) noexcept {
     assert(executor_ != nullptr);
@@ -63,10 +68,13 @@ struct schedulable_task_promise
         std::pair{std::forward<R>(task), std::forward<S>(to_resume)});
   }
 
-  auto initial_suspend() noexcept { return suspend_if{!has_executor()}; }
+  auto initial_suspend() noexcept {
+    DEBUG(bold|magenta, "initial_suspend called, has executor: ", has_executor());
+    return suspend_if{!has_executor()};
+  }
 
 private:
-  E *executor_;
+  E *executor_{nullptr};
 };
 
 template <class T, Executor E>
@@ -130,9 +138,10 @@ struct schedulable_task : trivial_task<T, schedulable_task_promise<T, E>> {
   }
 
   void set_executor(E *executor) {
-    /* DEBUG(bold | blue, "set_executor called on ", reset | yellow,
+     DEBUG(bold | blue, "set_executor called on ", reset | yellow,
           this->get_handle().address(), bold | blue, " with ", reset | yellow,
-          executor); */
+          executor);
+     assert(this->get_handle().promise().has_executor() == false);
     this->get_handle().promise().set_executor(executor);
     this->get_handle().promise().schedule(this->release_handle());
   }
@@ -236,7 +245,7 @@ struct thread_executor {
   }
 };
 
-using used_executor = trivial_executor;
+using used_executor = delayed_executor;
 
 template <class T> using task = schedulable_task<T, used_executor>;
 
