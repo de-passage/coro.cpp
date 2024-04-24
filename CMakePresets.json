@@ -41,7 +41,7 @@
       "configuration": "Release",
       "targets": [
         "coro",
-        "run"
+        "run-coro"
       ]
     }
   ],
