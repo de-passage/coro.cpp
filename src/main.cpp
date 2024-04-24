@@ -18,11 +18,11 @@ struct trivial_executor {
   using handle_type = std::coroutine_handle<>;
   using task_type = std::pair<handle_type, handle_type>;
   void schedule(std::convertible_to<task_type> auto &&task) {
-      DEBUG(bold|green, "Running task: ", task.first.address());
+    DEBUG(bold | green, "Running task: ", task.first.address());
     task.first.resume();
     if constexpr (!std::is_same_v<decltype(task.second), std::nullptr_t>) {
       if (task.second != nullptr) {
-      DEBUG(bold|green, "Running 2nd task: ", task.second.address());
+        DEBUG(bold | green, "Running 2nd task: ", task.second.address());
         task.second.resume();
       }
     }
@@ -31,14 +31,6 @@ struct trivial_executor {
   void execute() {}
 };
 static_assert(Executor<trivial_executor>);
-
-struct suspend_if {
-  bool should_suspend;
-
-  bool await_ready() { return !should_suspend; }
-  void await_suspend([[maybe_unused]] std::coroutine_handle<> coro) {}
-  void await_resume() {}
-};
 
 template <class T, Executor E> struct schedulable_task;
 
@@ -69,7 +61,8 @@ struct schedulable_task_promise
   }
 
   auto initial_suspend() noexcept {
-    DEBUG(bold|magenta, "initial_suspend called, has executor: ", has_executor());
+    DEBUG(bold | magenta,
+          "initial_suspend called, has executor: ", has_executor());
     return suspend_if{!has_executor()};
   }
 
@@ -83,7 +76,8 @@ struct schedulable_task : trivial_task<T, schedulable_task_promise<T, E>> {
   using base = trivial_task<T, promise_type>;
 
   schedulable_task(std::coroutine_handle<promise_type> coro) : base(coro) {
-      DEBUG(bold | red, "creating schedulable_task with handle ", this->get_handle().address());
+    DEBUG(bold | red, "creating schedulable_task with handle ",
+          this->get_handle().address());
   }
   ~schedulable_task() {
     DEBUG(
@@ -138,10 +132,10 @@ struct schedulable_task : trivial_task<T, schedulable_task_promise<T, E>> {
   }
 
   void set_executor(E *executor) {
-     DEBUG(bold | blue, "set_executor called on ", reset | yellow,
+    DEBUG(bold | blue, "set_executor called on ", reset | yellow,
           this->get_handle().address(), bold | blue, " with ", reset | yellow,
           executor);
-     assert(this->get_handle().promise().has_executor() == false);
+    assert(this->get_handle().promise().has_executor() == false);
     this->get_handle().promise().set_executor(executor);
     this->get_handle().promise().schedule(this->release_handle());
   }
@@ -174,8 +168,7 @@ struct delayed_executor {
   }
 
   void execute() {
-#ifndef NDEBUG
-    auto show_execution_stack = [&]() noexcept -> string_generator {
+    DEBUG_ONLY(auto show_execution_stack = [&]() noexcept -> string_generator {
       if (execution_stack.empty()) {
         co_return "empty";
       }
@@ -187,8 +180,7 @@ struct delayed_executor {
         co_yield ss.str();
       }
       co_return ")";
-    };
-#endif
+    };)
     while (!tasks.empty() || !execution_stack.empty()) {
       while (!tasks.empty()) {
         auto task = tasks.front();
@@ -213,69 +205,47 @@ struct delayed_executor {
   }
 };
 
-struct thread_executor {
-  using handle_type = std::coroutine_handle<>;
-  using task_type = std::pair<handle_type, handle_type>;
-  using task_queue = std::queue<task_type>;
-  constexpr static inline size_t MAX_CONCURRENT_TASKS = 4;
-
-  std::array<std::thread, MAX_CONCURRENT_TASKS> threads;
-
-  task_queue tasks;
-
-  std::counting_semaphore<MAX_CONCURRENT_TASKS> semaphore{MAX_CONCURRENT_TASKS};
-
-  template <Resumable T> void schedule(T &&task) { tasks.push(task); }
-
-  void execute() {
-    while (!tasks.empty()) {
-      semaphore.acquire();
-      auto task = tasks.front();
-      tasks.pop();
-      for (auto &thread : threads) {
-        if (!thread.joinable()) {
-          thread = std::thread([task = std::move(task), this] {
-            task.first.resume();
-            semaphore.release();
-          });
-          break;
-        }
-      }
-    }
-  }
-};
-
-using used_executor = delayed_executor;
-
-template <class T> using task = schedulable_task<T, used_executor>;
-
-task<int> id(auto color, int value) {
+template <class E> schedulable_task<int, E> id(auto color, int value) {
   std::cout << color << "yielding " << value << reset << std::endl;
   co_return value;
 }
 
-task<int> hello_world(auto color) {
+template <class E> schedulable_task<int, E> hello_world(auto color) {
   std::cout << color << "Hello, World!\n" << reset;
-  co_return co_await id(color, 1) + co_await id(color, 10);
+  co_return co_await id<E>(color, 1) + co_await id<E>(color, 10);
 }
 
-task<void> whatever(auto color) {
+template <class E> schedulable_task<void, E> whatever(auto color) {
   std::cout << color << "Calling hello_world" << reset << std::endl;
-  int result = co_await hello_world(color);
+  int result = co_await hello_world<E>(color);
   std::cout << color << "Calling id(100)" << reset << std::endl;
-  int result2 = co_await id(color, 100);
+  int result2 = co_await id<E>(color, 100);
   std::cout << color << "Result: " << result2 + result << reset << '\n';
 }
 
 int main() {
-  used_executor executor;
-  std::cout << reverse << green << "Starting 1" << reset << std::endl;
-  whatever(reverse|blue).set_executor(&executor);
-  std::cout << reverse << green << "Starting 2" << reset << std::endl;
-  whatever(reverse|yellow).set_executor(&executor);
-  std::cout << reverse << green << "Starting 3" << reset << std::endl;
-  whatever(reverse|purple).set_executor(&executor);
-  std::cout << reverse << green << "Executing" << reset << std::endl;
-  executor.execute();
-  std::cout << reverse << green << "Done" << reset << std::endl;
+  {
+    trivial_executor executor;
+    std::cout << reverse << green << "Starting Trivial 1" << reset << std::endl;
+    whatever<trivial_executor>(reverse | blue).set_executor(&executor);
+    std::cout << reverse << green << "Starting Trivial 2" << reset << std::endl;
+    whatever<trivial_executor>(reverse | yellow).set_executor(&executor);
+    std::cout << reverse << green << "Starting Trivial 3" << reset << std::endl;
+    whatever<trivial_executor>(reverse | purple).set_executor(&executor);
+    std::cout << reverse << green << "Executing" << reset << std::endl;
+    executor.execute();
+    std::cout << reverse << green << "Done" << reset << std::endl;
+  }
+  {
+    delayed_executor executor;
+    std::cout << reverse << green << "Starting Delayed 1" << reset << std::endl;
+    whatever<delayed_executor>(reverse | blue).set_executor(&executor);
+    std::cout << reverse << green << "Starting Delayed 2" << reset << std::endl;
+    whatever<delayed_executor>(reverse | yellow).set_executor(&executor);
+    std::cout << reverse << green << "Starting Delayed 3" << reset << std::endl;
+    whatever<delayed_executor>(reverse | purple).set_executor(&executor);
+    std::cout << reverse << green << "Executing" << reset << std::endl;
+    executor.execute();
+    std::cout << reverse << green << "Done" << reset << std::endl;
+  }
 }

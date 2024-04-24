@@ -100,6 +100,6 @@ struct suspend_if {
   bool should_suspend;
   constexpr explicit suspend_if(bool should_suspend) : should_suspend(should_suspend) {}
   constexpr bool await_ready() const noexcept { return !should_suspend; }
-  constexpr void await_suspend(std::coroutine_handle<> coro) const noexcept {}
+  constexpr void await_suspend([[maybe_unused]] std::coroutine_handle<> coro) const noexcept {}
   constexpr void await_resume() const noexcept {}
 };
