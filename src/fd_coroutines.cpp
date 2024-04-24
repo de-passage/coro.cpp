@@ -402,6 +402,7 @@ fd_reader handle_connection_on(auto color, fd_t connection_port) {
     int readed = posix_enforce(read(connection_port.fd, buffer.data(), buffer.size()));
     if (readed == 0) {
       std::cout << color << "<Stream closed>" << std::endl;
+      co_return;
     } else {
       std::cout << color << std::string_view(buffer.data(), readed) << reset
                 << std::endl;
