@@ -225,7 +225,7 @@ struct fd_awaiter {
   reader_container readers;
 
   void run() {
-    [[maybe_unused]] auto rev = dpsg::vt100::reverse;
+    DEBUG_ONLY(auto rev = dpsg::vt100::reverse);
     using namespace std::ranges;
     std::vector<pollfd> fds;
     std::unordered_map<int, std::deque<fd_reader *>> in_waiting;
@@ -241,7 +241,7 @@ struct fd_awaiter {
           continue;
         }
         auto &wants = r.waiting_on();
-        DEBUG(rev, &r, " wants ", wants);
+        DEBUG(rev, "Preping: ", &r);
         for (auto w : wants) {
           pollfd event;
           event.fd = static_cast<int>(w);
@@ -327,6 +327,9 @@ struct fd_awaiter {
       if (last != fds.end()) {
         fds.erase(last, fds.end());
       }
+      std::sort(fds.begin(), fds.end(), [](const pollfd &left, const pollfd &right) {
+        return left.fd < right.fd;
+      });
 
       if (!to_delete.empty()) {
         for (auto it : to_delete) {
@@ -380,6 +383,7 @@ fd_reader wait_on_tcp_socket(auto color, int port, int count = 1) {
     int readed = posix_enforce(read(sock, buffer.data(), buffer.size()));
     if (readed == 0) {
       std::cout << color << "<Stream closed>" << std::endl;
+      posix_enforce(close(sock));
       co_return;
     } else {
       std::cout << color << std::string_view(buffer.data(), readed) << reset

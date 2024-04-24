@@ -147,8 +147,10 @@ constexpr auto orange = setf(220, 90, 10);
 
 #ifndef NDEBUG
 #define DEBUG(...) println(reset, __VA_ARGS__, reset)
+#define DEBUG_ONLY(...) __VA_ARGS__
 #else
 #define DEBUG(...)
+#define DEBUG_ONLY(...)
 #endif
 
 #endif // HEADER_GUARD_DEBUG_HPP
