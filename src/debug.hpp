@@ -1,7 +1,9 @@
-#pragma once
+#ifndef HEADER_GUARD_DEBUG_HPP
+#define HEADER_GUARD_DEBUG_HPP
 
 #include "vt100.hpp"
 #include <coroutine>
+#include <mutex>
 #include <utility>
 using namespace dpsg::vt100;
 
@@ -53,7 +55,23 @@ struct string_generator {
   bool has_next() const { return !handle.done(); }
 };
 
-template <class T> T transform(T &&t) { return std::forward<T>(t); }
+namespace detail {
+template <class T>
+concept Streamable = requires(T t, std::ostream &out) {
+  { out << t } -> std::same_as<std::ostream &>;
+};
+
+template <class T>
+concept Iterable = requires(T t) {
+  t.begin();
+  t.begin() == t.end();
+  ++t.begin();
+};
+} // namespace detail
+
+template <::detail::Streamable T> decltype(auto) transform(T &&t) {
+  return std::forward<T>(t);
+}
 
 static std::unordered_map<void *, std::string> address_to_string;
 static int counter = 1;
@@ -88,11 +106,36 @@ inline std::string transform(string_generator gen) {
 
 template <std::invocable T> auto transform(T &&t) { return transform(t()); }
 
+std::string transform(::detail::Iterable auto const &map) {
+  std::stringstream s;
+  s << '{';
+  for (auto it = map.begin(); it != map.end(); ++it) {
+    if (it != map.begin()) {
+      s << ", ";
+    }
+    s << transform(*it);
+  }
+  s << '}';
+  return s.str();
+}
+
+template<class T, class U>
+std::string transform(const std::pair<T, U>& p) {
+  std::stringstream s;
+  s << '<' << transform(p.first) << ", " << transform(p.second) << '>';
+  return s.str();
+}
+
+namespace debug_ {
+extern std::mutex mutex_;
+}
 template <class... Args> void print(Args &&...args) {
+  std::unique_lock lock{debug_::mutex_};
   (std::cout << ... << args) << std::flush;
 }
 
 template <class... Args> void println(Args &&...args) {
+  std::unique_lock lock{debug_::mutex_};
   (std::cout << ... << transform(std::forward<decltype(args)>(args)))
       << std::endl;
 }
@@ -103,9 +146,9 @@ constexpr auto purple = setf(170, 50, 170);
 constexpr auto orange = setf(220, 90, 10);
 
 #ifndef NDEBUG
-#define DEBUG(...)                                                             \
-  println(light_gray, "(caller: ", yellow, (void *)this, light_gray,           \
-          "): ", reset, __VA_ARGS__, reset)
+#define DEBUG(...) println(reset, __VA_ARGS__, reset)
 #else
 #define DEBUG(...)
 #endif
+
+#endif // HEADER_GUARD_DEBUG_HPP
