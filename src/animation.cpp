@@ -32,6 +32,7 @@ struct pause {
 
 template <class T> struct immediate {
   T c;
+  explicit(false) immediate(T c) : c{c} {}
 };
 
 struct animation {
@@ -176,13 +177,13 @@ animation bar() {
 
 int main() {
   std::vector<animation> animations;
-  animations.emplace_back(spinner().anchor(40, 40));
-  animations.emplace_back(spinner().anchor(40, 41).skip_frames(2));
-  animations.emplace_back(bar().anchor(41, 10));
-  animations.emplace_back(with_skip().anchor(40, 21));
+  animations.emplace_back(spinner().anchor(4, 4));
+  animations.emplace_back(spinner().anchor(4, 5).skip_frames(2));
+  animations.emplace_back(bar().anchor(6, 1));
+  animations.emplace_back(with_skip().anchor(4, 6));
 
   while (true) {
-    std::cout << clear << std::flush;
+    std::cout << clear << hide_cursor << std::flush;
     for (auto &anim : animations) {
       anim.run();
     }
