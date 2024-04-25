@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <arpa/inet.h>
+#include <bits/chrono.h>
+#include <bits/types/sigevent_t.h>
 #include <cassert>
 #include <coroutine>
 #include <csignal>
+#include <ctime>
 #include <deque>
 #include <exception>
 #include <functional>
@@ -327,9 +330,11 @@ struct fd_awaiter {
       if (last != fds.end()) {
         fds.erase(last, fds.end());
       }
-      std::sort(fds.begin(), fds.end(), [](const pollfd &left, const pollfd &right) {
-        return left.fd < right.fd;
-      });
+      // we need to sort the fds to be able to use lower_bound
+      std::sort(fds.begin(), fds.end(),
+                [](const pollfd &left, const pollfd &right) {
+                  return left.fd < right.fd;
+                });
 
       if (!to_delete.empty()) {
         for (auto it : to_delete) {
@@ -399,7 +404,8 @@ fd_reader handle_connection_on(auto color, fd_t connection_port) {
     co_await connection_port;
     std::array<char, 512> buffer;
 
-    int readed = posix_enforce(read(connection_port.fd, buffer.data(), buffer.size()));
+    int readed =
+        posix_enforce(read(connection_port.fd, buffer.data(), buffer.size()));
     if (readed == 0) {
       std::cout << color << "<Stream closed>" << std::endl;
       co_return;
@@ -436,6 +442,83 @@ fd_reader spawn_tcp_server(fd_awaiter &awaiter, auto color, int listening_port,
     co_yield handle_connection_on(color, connection);
   }
 }
+
+struct timers {
+  using clock = std::chrono::steady_clock;
+  using time_point = clock::time_point;
+  using duration = clock::duration;
+  using timer_id = uint64_t;
+
+  struct timer {
+    int id;
+    time_point when;
+    std::coroutine_handle<> then;
+  };
+
+  timer_t posix_timer_id;
+
+  timers() {
+    sigevent evp;
+    evp.sigev_notify = SIGEV_SIGNAL;
+    evp.sigev_signo = SIGUSR1;
+
+    timer_create(CLOCK_MONOTONIC, &evp, &posix_timer_id);
+  }
+
+  using container = std::vector<timer>;
+
+  timer_id insert_timer(time_point d) {
+    using namespace std::chrono;
+    time_point next{std::numeric_limits<time_point>::max()};
+
+    if (!timers.empty()) {
+      next = timers.front().when;
+    }
+    std::push_heap(timers.begin(), timers.end(),
+                   [](const timer &left, const timer &right) {
+                     return left.when > right.when;
+                   });
+    auto now = clock::now();
+    auto wake = d - now;
+    auto secs = duration_cast<seconds>(wake);
+
+    if (next < d) {
+      itimerspec spec{
+          .it_interval = {0, 0},
+          .it_value = {.tv_sec = secs.count(),
+                       .tv_nsec =
+                           duration_cast<nanoseconds>(wake - secs).count()},
+      };
+      timer_settime(posix_timer_id, 0, &spec, nullptr);
+    }
+    return id_counter++;
+  }
+
+  fd_reader manage_timers(fd_awaiter &awaiter) {
+    auto signal_fd = descriptors::make_signal_fd();
+
+    do {
+      co_await signal_fd;
+
+      timer top = timers.front();
+      auto now = clock::now();
+      signalfd_siginfo info;
+      posix_enforce(read(signal_fd.fd, &info, sizeof(info)));
+
+      if (top.when <= now) {
+        std::pop_heap(timers.begin(), timers.end(),
+                      [](const timer &left, const timer &right) {
+                        return left.when > right.when;
+                      });
+        timers.pop_back();
+      }
+    } while (true);
+  }
+
+private:
+  container timers;
+  timer_id id_counter = 0;
+};
 
 int main() {
   fd_awaiter awaiter;
