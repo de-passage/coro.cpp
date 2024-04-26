@@ -95,11 +95,3 @@ template <class P> struct trivial_task<void, P> : resumable_handle<P> {
 
   explicit(false) trivial_task(handle_type coro) : resumable_handle<P>(coro) {}
 };
-
-struct suspend_if {
-  bool should_suspend;
-  constexpr explicit suspend_if(bool should_suspend) : should_suspend(should_suspend) {}
-  constexpr bool await_ready() const noexcept { return !should_suspend; }
-  constexpr void await_suspend([[maybe_unused]] std::coroutine_handle<> coro) const noexcept {}
-  constexpr void await_resume() const noexcept {}
-};

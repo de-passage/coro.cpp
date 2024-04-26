@@ -5,10 +5,10 @@
 #include <coroutine>
 #include <mutex>
 #include <utility>
-using namespace dpsg::vt100;
-
 #include <sstream>
 #include <unordered_map>
+
+using namespace dpsg::vt100;
 
 struct string_generator {
   struct promise_type;
@@ -151,6 +151,10 @@ constexpr auto orange = setf(220, 90, 10);
 #else
 #define DEBUG(...)
 #define DEBUG_ONLY(...)
+#endif
+
+#ifdef DPSG_COMPILE_DEBUG_HPP
+std::mutex debug_::mutex_{};
 #endif
 
 #endif // HEADER_GUARD_DEBUG_HPP
